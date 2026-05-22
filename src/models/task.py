@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 import uuid
 
@@ -27,6 +27,59 @@ class Task:
         if not self.title or self.title.strip() == "":
             raise ValueError("Ошибка: заголовок задачи не может быть пустым.")
         
+
+    @property
+    def end_time(self) -> datetime:
+        return self.date + timedelta(minutes=self.duration_minutes)
+    
+
+    @property
+    def is_overdue(self) -> bool:
+        return datetime.now() > self.end_time
+    
+
+    @property
+    def is_today(self) -> bool:
+        self.today = datetime.now().date()
+        return self.date.date() == self.today
+    
+
+    @property
+    def is_tomorrow(self) -> bool:
+        self.tommorow = datetime.now().date() + timedelta(days=1)
+        return self.date.date() == self.tommorow
+    
+    @property
+    def is_this_week(self) -> bool:
+        self.today = datetime.now().date()
+        self.start_of_week = self.today - timedelta(days=self.today.weekday())
+        end_of_week = self.start_of_week + timedelta(days=6)
+        return self.start_of_week <= self.date.date() <= end_of_week
+    
+
+    @property
+    def priority_Lable(self) -> str:
+        self.priority_Lable = {0: "Низкий", 1: "Средний", 2: "Высокий"}
+        return self.priority_Lable.get(self.priority, "Неизвестно")
+    
+
+    @property
+    def priority_icon(self) -> str:
+        """Иконка приоритета."""
+        icons = {0: "🟢", 1: "🟡", 2: "🔴"}
+        return icons.get(self.priority, "⚪")
+    
+
+    def add_tag(self, tag: str) -> None:
+        if tag not in self.tags:
+            self.tags.append(tag)
+            self.updated_at = datetime.now()
+
+
+    def remove_tag(self, tag: str) -> None:
+        if tag in self.tags:
+            self.tags.remove(tag)
+            self.updated_at = datetime.now()
 
 
     def to_dict(self) -> Dict[str, Any]:
@@ -57,3 +110,26 @@ class Task:
         )
     
 
+    def __str__(self) -> str:
+        date_str = self.date.strftime("%d-%m-%Y %H:%M")
+        end_str = self.end_time.strftime("%H:%M")
+        tags_str = f"[{', '.join(self.tags)}]" if self.tags else ""
+        desc_str = f" - {self.description}" if self.description else ""
+
+        return (
+            f"{self.priority_icon} [{date_str} - {end_str}]"
+            f"{self.title}{tags_str}{desc_str}"
+            )
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Task):
+            return False
+        return self.id == other.id
+
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+    
+    
+    def __lt__(self, other: "Task") -> bool:
+        return self.date < other.date

@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from src.exceptions import ConfigurationError
+from exceptions import ConfigurationError
 
 
 @dataclass
@@ -29,7 +29,7 @@ class Config:
         default_factory=lambda: int(os.getenv("VC_SPEECH_RATE", "150"))
     )
     speech_volume: float = field(
-        default_factory=lambda: float(os.getenv("VC_SPEECH_VOLUME", "1.0"))
+        default_factory=lambda: float(os.getenv("VC_SPEECH_VOLUME", "0.9"))
     )
     google_credentials_path: Optional[str] = field(
         default_factory=lambda: os.getenv("VC_GOOGLE_CREDENTIALS", None)

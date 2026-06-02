@@ -36,7 +36,7 @@ class MockParser:
         hour, minute = 9, 0
         match = re.search(r"в\s+(\d{1,2})[:\-](\d{2})", text)
         if match:
-            hour, minute = int(match.group(1), match.group(2))
+            hour, minute = (int(match.group(1)), int(match.group(2)))
         else:
             match = re.search(r"в\s+(\d{1,2})", text)
             if match:

@@ -1,7 +1,7 @@
 """Модули хранилища VoiceCalendar."""
 
-from storage.base import BaseCalendarStorage
-from storage.json_storage import JsonCalendarStorage
+from src.storage.base import BaseCalendarStorage
+from src.storage.json_storage import JsonCalendarStorage
 
 __all__ = [
     "BaseCalendarStorage",
@@ -10,9 +10,8 @@ __all__ = [
 
 # GoogleCalendarStorage импортируется опционально
 try:
-    from src.storage.google_calendar_storage import GoogleCalendarStorage
+    from src.storage.gc_storage import GoogleCalendarStorage
 
     __all__.append("GoogleCalendarStorage")
 except ImportError:
     pass
-

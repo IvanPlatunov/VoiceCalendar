@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Optional
 
-from models.task import Task
+from src.models.task import Task
 
 
 class BaseCalendarStorage(ABC):
@@ -128,4 +128,3 @@ class BaseCalendarStorage(ABC):
     def clear_all(self) -> None:
         """Удаляет все задачи из хранилища."""
         pass
-

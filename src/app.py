@@ -5,15 +5,15 @@ import sys
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config import Config
-from models.task import Task
-from storage.base import BaseCalendarStorage
-from storage.json_storage import JsonCalendarStorage
+from src.config import Config
+from src.models.task import Task
+from src.storage.base import BaseCalendarStorage
+from src.storage.json_storage import JsonCalendarStorage
 
 # from parser.command_parser import CommandParser
 # from speech.recognizer import VoiceRecognizer
 # from speech.synthesizer import SpeechSynthesizer
-from exceptions import VoiceCalendarError, ConfigurationError
+from src.exceptions import VoiceCalendarError, ConfigurationError
 
 logger = logging.getLogger(__name__)
 

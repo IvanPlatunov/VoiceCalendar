@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from exceptions import ConfigurationError
+from src.exceptions import ConfigurationError
 
 
 @dataclass
@@ -65,7 +65,7 @@ class Config:
                 "Для использования Google Calendar необходимо указать"
                 "VC_GOOGLE_CREDENTIALS"
             )
-        if not 0.0 < self.speech_volume < 1.0:
+        if not 0.0 <= self.speech_volume <= 1.0:
             raise ConfigurationError("Громкость речи должна быть от 0 до 1")
         if self.speech_rate < 50 or self.speech_rate > 300:
             raise ConfigurationError("Скорость речи должна быть от 50 до 300")

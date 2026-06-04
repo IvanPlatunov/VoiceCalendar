@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from src.exceptions import ConfigurationError
+from exceptions import ConfigurationError
 
 
 @dataclass

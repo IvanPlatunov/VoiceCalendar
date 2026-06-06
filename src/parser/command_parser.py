@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict
 import logging
 
-from models.task import Task
-from exceptions import ParsingError
+from ..models.task import Task
+from ..exceptions import ParsingError
 
 logger = logging.getLogger(__name__)
 
@@ -318,4 +318,3 @@ class CommandParser:
             tags.append(match.group(1))
 
         return list(set(tags))
-

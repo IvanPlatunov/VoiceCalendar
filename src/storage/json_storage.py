@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 import threading
 
-from src.models.task import Task
-from src.storage.base import BaseCalendarStorage
-from src.exceptions import StorageError
+from ..models.task import Task
+from .base import BaseCalendarStorage
+from ..exceptions import StorageError
 
 
 class JsonCalendarStorage(BaseCalendarStorage):

@@ -2,8 +2,8 @@ import speech_recognition as sr
 from typing import Optional, List, Tuple
 import logging
 
-from exceptions import RecognitionError
-from config import Config
+from ..exceptions import RecognitionError
+from ..config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -113,4 +113,3 @@ class VoiceRecognizer:
 
         logger.warning(f"Не удалось распознать речь за {max_retries} попыток")
         return None
-

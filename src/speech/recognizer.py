@@ -1,115 +1,89 @@
-import speech_recognition as sr
+import io
+import json
+import wave
 from typing import Optional, List, Tuple
-import logging
+
+import sounddevice as sd
+import numpy as np
+import requests
 
 from ..exceptions import RecognitionError
 from ..config import Config
-
-logger = logging.getLogger(__name__)
 
 
 class VoiceRecognizer:
     def __init__(
         self,
-        config: Optional[Config],
-        dynamic_energy_threshold: bool = True,
-        calibration_duration: float = 1.0,
+        config: Optional[Config] = None,
     ):
 
         self.config = config or Config.from_env()
-        self.recognizer = sr.Recognizer()
         self.language = self.config.language
         self.timeout = self.config.recognition_timeout
         self.phrase_time_limit = self.config.phrase_time_limit
-        self.energy_threshold = self.config.energy_threshold
-        self.dynamic_energy_threshold = dynamic_energy_threshold
-        self.calibration_duration = calibration_duration
-
-        # Настройка распознавателя
-        if not dynamic_energy_threshold:
-            self.recognizer.energy_threshold = self.config.energy_threshold
-        else:
-            self.recognizer.dynamic_energy_threshold = True
-
-        logger.info(
-            f"Распознаватель инициализирован: язык={self.language}, timeout={self.timeout}"
-        )
+        self.samplerate = self.config.samplerate
 
     @classmethod
     def list_microphones(cls) -> List[Tuple[int, str]]:
         microphones = []
-        for index, name in enumerate(sr.Microphone.list_microphone_names()):
-            microphones.append((index, name))
+        for i, d in enumerate(sd.query_devices()):
+            if d["max_input_channels"] > 0:
+                microphones.append((i, d["name"]))
         return microphones
-
-    def calibrate(self, duration: float = 2.0) -> None:
-        logger.info(f"Калибровка микрофона ({duration} сек)...")
-
-        with sr.Microphone() as source:
-            print(
-                f" Калибровка микрофона ({duration} сек)... Говорите что-нибудь или молчите."
-            )
-            self.recognizer.adjust_for_ambient_noise(source, duration=duration)
-
-        logger.info(
-            f"Калибровка завершена. Порог энергии: {self.recognizer.energy_threshold}"
-        )
-        print(
-            f"Калибровка завершена. Порог энергии: {self.recognizer.energy_threshold:.1f}"
-        )
 
     def listen(self) -> str:
         try:
-            with sr.Microphone() as source:
-                logger.debug("Ожидание речи...")
-                print(" Слушаю...")
+            print("Слушаю...")
+            recording = sd.rec(
+                int(self.phrase_time_limit * self.samplerate),
+                samplerate=self.samplerate,
+                channels=1,
+                dtype="int16",
+            )
+            sd.wait()
+            wav = io.BytesIO()
+            with wave.open(wav, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self.samplerate)
+                wf.writeframes(recording.tobytes())
 
-                audio = self.recognizer.listen(
-                    source,
-                    timeout=self.timeout,
-                    phrase_time_limit=self.phrase_time_limit,
-                )
+            print("Распознаю...")
 
-            logger.debug("Отправка аудио в Google Speech API...")
-            print("Распознаю речь...")
+            url = "https://www.google.com/speech-api/v2/recognize"
+            params = {
+                "client": "chromium",
+                "lang": self.language,
+                "key": "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw",
+            }
+            headers = {"Content-Type": "audio/l16; rate=16000"}
+            response = requests.post(
+                url, params=params, data=wav.getvalue(), headers=headers
+            )
+            for line in response.text.splitlines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    return (
+                        data["result"][0]["alternative"][0]["transcript"]
+                        .lower()
+                        .strip()
+                    )
+                except (KeyError, IndexError, json.JSONDecodeError):
+                    continue
 
-            text = self.recognizer.recognize_google(audio, language=self.language)
+            raise RecognitionError("Не удалось распознать речь")
 
-            result = text.lower().strip()
-            logger.info(f"Распознано: {result}")
-            return result
-
-        except sr.WaitTimeoutError as e:
-            raise RecognitionError("Время ожидания речи истекло") from e
-        except sr.UnknownValueError as e:
-            raise RecognitionError("Не удалось распознать речь") from e
-        except sr.RequestError as e:
-            raise RecognitionError(f"Ошибка сервиса распознавания: {e}") from e
-        except Exception as e:
-            raise RecognitionError(f"Неизвестная ошибка: {e}") from e
+        except requests.RequestException as e:
+            raise RecognitionError(f"Ошибка сервиса: {e}")
 
     def listen_safe(self) -> Optional[str]:
         try:
             return self.listen()
         except RecognitionError as e:
-            logger.warning(f"Ошибка распознавания: {e}")
-            print(f"{e}")
+            print(f"Ошибка распознавания: {e}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {e}")
             print(f"Неожиданная ошибка: {e}")
 
-        return None
-
-    def listen_with_retry(self, max_retries: int = 3) -> Optional[str]:
-        for attempt in range(1, max_retries + 1):
-            logger.debug(f"Попытка {attempt}/{max_retries}")
-
-            result = self.listen_safe()
-            if result:
-                return result
-
-            if attempt < max_retries:
-                print(f"Попытка {attempt + 1}...")
-
-        logger.warning(f"Не удалось распознать речь за {max_retries} попыток")
         return None

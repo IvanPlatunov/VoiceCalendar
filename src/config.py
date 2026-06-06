@@ -16,15 +16,15 @@ class Config:
             "VC_STORAGE_PATH", str(Path(__file__).parent.parent / "calendar_data.json")
         )
     )
-    language: str = field(default_factory=lambda: os.getenv("VC_LANGUAGE", "ru"))
+    language: str = field(default_factory=lambda: os.getenv("VC_LANGUAGE", "ru-RU"))
     recognition_timeout: int = field(
         default_factory=lambda: int(os.getenv("VC_RECOGNITION_TIMEOUT", "5"))
     )
     phrase_time_limit: int = field(
         default_factory=lambda: int(os.getenv("VS_PHRASE_TIME_LIMIT", "15"))
     )
-    energy_threshold: int = field(
-        default_factory=lambda: int(os.getenv("VC_ENERGY_THRESHOLD", "300"))
+    samplerate: int = field(
+        default_factory=lambda: int(os.getenv("VC_SAMPLERATE", "16000"))
     )
     speech_rate: int = field(
         default_factory=lambda: int(os.getenv("VC_SPEECH_RATE", "150"))

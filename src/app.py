@@ -1,11 +1,12 @@
 import sys
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
 from .config import Config
 from .storage.json_storage import JsonCalendarStorage
 from .parser.command_parser import CommandParser
-from .speech.recognizer import VoiceRecognizer
+from .speech.recognizer import VoiceRecognizer, RecognizerEvent
 from .speech.synthesizer import SpeechSynthesizer
 
 
@@ -55,11 +56,18 @@ class VoiceCalendarApp:
         print(self.HELP_TEXT)
         try:
             while True:
-                text = self.recognizer.listen_safe()
+                event, text = self.recognizer.listen_safe()
+                if event == RecognizerEvent.WAKE:
+                    self.synthesizer.speak("Слушаю!")
+                    continue
+                elif event == RecognizerEvent.SLEEP:
+                    self.synthesizer.speak("Ухожу в фон")
                 if text is None:
                     continue
                 print(f"\n🗣️ Распознано: {text}")
                 self._handle_command(text)
+                time.sleep(0.5)
+                self.synthesizer.speak("Слушаю!")
         except SystemExit:
             self.synthesizer.speak("До свидания!")
             print("Завершение работы...")
@@ -113,8 +121,9 @@ class VoiceCalendarApp:
         self.synthesizer.speak(f"Найдено {len(tasks)} задач")
 
     def _cmd_help(self):
-        print(self.HELP_TEXT)
         print("Смотрите список команд на экране")
+        print(self.HELP_TEXT)
+        self.synthesizer.speak("Смотрите список команд на экране.")
 
     def _cmd_clear_tasks(self) -> None:
         """Очищает все задачи."""

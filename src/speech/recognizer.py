@@ -1,71 +1,84 @@
 import io
 import json
 import wave
+from enum import Enum
 from typing import Optional, List, Tuple
 
-import sounddevice as sd
 import numpy as np
+import sounddevice as sd
 import requests
 
-from ..exceptions import RecognitionError
 from ..config import Config
-from ..parser.command_parser import CommandParser
+from ..exceptions import RecognitionError
+
+
+class RecognizerEvent(Enum):
+    WAKE = "wake"
+    SLEEP = "sleep"
+    TEXT = "text"
 
 
 class VoiceRecognizer:
-    def __init__(
-        self,
-        config: Optional[Config] = None,
-    ):
-
+    def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.from_env()
         self.language = self.config.language
-        self.phrase_time_limit = self.config.phrase_time_limit
         self.samplerate = self.config.samplerate
+        self.phrase_time_limit = self.config.phrase_time_limit
         self.chunk_duration = self.config.chunk_duration
         self.silence_threshold = self.config.silence_threshold
         self.silence_limit = self.config.silence_limit
         self._active = False
 
-    @classmethod
-    def list_microphones(cls) -> List[Tuple[int, str]]:
-        microphones = []
-        for i, d in enumerate(sd.query_devices()):
-            if d["max_input_channels"] > 0:
-                microphones.append((i, d["name"]))
-        return microphones
+    @staticmethod
+    def list_microphones() -> List[Tuple[int, str]]:
+        return [
+            (i, d["name"])
+            for i, d in enumerate(sd.query_devices())
+            if d["max_input_channels"] > 0
+        ]
 
-    def listen(self) -> str:
+    def listen(self) -> Tuple[RecognizerEvent, Optional[str]]:
         try:
             if not self._active:
                 print("Голосовой помощник в режиме ожидания")
                 while True:
                     text = self._record_and_recognize()
-                    if text and any(w in text for w in CommandParser.WAKE_WORDS):
-                        print("🟢 Активирован")
+                    if text:
                         self._active = True
-                        break
+                        print("🟢 Активирован")
+                        return RecognizerEvent.WAKE, text
 
-            while True:
-                text = self._record_and_recognize()
-                if any(w in text.split() for w in CommandParser.SLEEP_WORDS):
-                    self._active = False
-                    raise RecognitionError("Сон")
-                return text
+            text = self._record_and_recognize()
+            return RecognizerEvent.TEXT, text
+
         except requests.RequestException as e:
             raise RecognitionError(f"Ошибка сервиса: {e}")
 
-    def _record_and_recognize(self):
+    def listen_safe(self) -> Tuple[RecognizerEvent, Optional[str]]:
+        while True:
+            try:
+                return self.listen()
+            except RecognitionError as e:
+                msg = str(e)
+                if msg == "Тишина":
+                    if self._active:
+                        continue
+                    else:
+                        return RecognizerEvent.TEXT, None
+                elif msg == "Сон":
+                    self._active = False
+                    return RecognizerEvent.SLEEP, None
+                else:
+                    print(f"⚠️  {e}")
+                    return RecognizerEvent.TEXT, None
+
+    def _record_and_recognize(self) -> str:
         chunks = []
         silence_time = 0.0
         total_time = 0.0
         started = False
 
-        stream = sd.InputStream(
-            samplerate=self.samplerate,
-            channels=1,
-            dtype="int16",
-        )
+        stream = sd.InputStream(samplerate=self.samplerate, channels=1, dtype="int16")
         stream.start()
 
         while total_time < self.phrase_time_limit:
@@ -73,9 +86,7 @@ class VoiceRecognizer:
             chunks.append(chunk)
             total_time += self.chunk_duration
 
-            volume = np.abs(chunk).mean()
-
-            if volume >= self.silence_threshold:
+            if np.abs(chunk).mean() >= self.silence_threshold:
                 started = True
                 silence_time = 0.0
             else:
@@ -98,18 +109,19 @@ class VoiceRecognizer:
             wf.setframerate(self.samplerate)
             wf.writeframes(recording.tobytes())
 
-        print("Распознаю...")
-
-        url = "https://www.google.com/speech-api/v2/recognize"
-        params = {
-            "client": "chromium",
-            "lang": self.language,
-            "key": "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw",
-        }
-        headers = {"Content-Type": "audio/l16; rate=16000"}
+        print("⏳ Распознаю...")
         response = requests.post(
-            url, params=params, data=wav.getvalue(), headers=headers, timeout=10
+            "https://www.google.com/speech-api/v2/recognize",
+            params={
+                "client": "chromium",
+                "lang": self.language,
+                "key": "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw",
+            },
+            data=wav.getvalue(),
+            headers={"Content-Type": "audio/l16; rate=16000"},
+            timeout=10,
         )
+
         for line in response.text.splitlines():
             if not line:
                 continue
@@ -119,17 +131,4 @@ class VoiceRecognizer:
             except (KeyError, IndexError, json.JSONDecodeError):
                 continue
 
-        raise RecognitionError("Не удалось распознать речь")
-
-    def listen_safe(self) -> Optional[str]:
-        while True:
-            try:
-                return self.listen()
-            except RecognitionError as e:
-                if str(e) == "Тишина":
-                    continue
-                elif str(e) == "Сон":
-                    continue
-                else:
-                    print(f"Ошибка распознавания: {e}")
-                    return None
+        raise RecognitionError("Сон" if self._active else "Тишина")

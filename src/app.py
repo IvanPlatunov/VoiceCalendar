@@ -1,21 +1,36 @@
-import logging
 import sys
-
 from datetime import datetime, timedelta
 from typing import Optional
 
 from .config import Config
 from .storage.json_storage import JsonCalendarStorage
-
 from .parser.command_parser import CommandParser
 from .speech.recognizer import VoiceRecognizer
 from .speech.synthesizer import SpeechSynthesizer
 
-logger = logging.getLogger(__name__)
-
 
 class VoiceCalendarApp:
-    HELP_TEXT = ""
+    HELP_TEXT = """
+╔══════════════════════════════════════════════════════════════════╗
+║                   🗓️  VOICE CALENDAR — СПРАВКА                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  🔔 АКТИВАЦИЯ                                                    ║
+║    • "Привет, календарь" / "Календарь" / "Ассистент"             ║
+║                                                                  ║
+║  📝 ДОБАВЛЕНИЕ                                                   ║
+║    • "Поставь задачу [что] на [когда] в [время]"                 ║
+║    • Приоритет: "срочно", "важно"                                ║
+║                                                                  ║
+║  📋 ПРОСМОТР                                                     ║
+║    • "Покажи задачи на сегодня" / "Что у меня на завтра"         ║
+║                                                                  ║
+║  😴 РЕЖИМЫ                                                       ║
+║    • "Стоп", "фон" — фоновый режим                               ║
+║    • "Выход" — завершить работу                                  ║
+║    • "Помощь" — эта справка                                      ║
+║    • "Очисти всё" — удалить все задачи                           ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.from_env()
@@ -24,42 +39,44 @@ class VoiceCalendarApp:
 
         self.parser = CommandParser()
         self.recognizer = VoiceRecognizer(self.config)
-        self.synthesizer = SpeechSynthesizer()
-
-        self._running = False
-        self._commands_history = []
+        self.synthesizer = SpeechSynthesizer(
+            rate=self.config.speech_rate,
+            volume=self.config.speech_volume,
+            language="ru",
+        )
 
     def run(self):
+        print("=" * 60)
+        print("  🗓️  VoiceCalendar")
+        print("Голосовой помощник для управления задачами")
+        print("=" * 60)
         self._running = True
         self.synthesizer.speak("Голосовой помощник готов. Чем могу помочь?")
         print(self.HELP_TEXT)
-        while self._running:
-            try:
+        try:
+            while True:
                 text = self.recognizer.listen_safe()
                 if text is None:
                     continue
-                print(f"\n Распознано: {text}")
-                self._commands_history.append(text)
+                print(f"\n🗣️ Распознано: {text}")
                 self._handle_command(text)
-            except KeyboardInterrupt:
-                print("Завершение работы...")
-                self.stop()
-                sys.exit(0)
-
-    def stop(self):
-        self._running = False
+        except SystemExit:
+            self.synthesizer.speak("До свидания!")
+            print("Завершение работы...")
+            sys.exit(0)
 
     def _handle_command(self, text):
-        text_lower = text.lower().strip()
-        if any(w in text_lower for w in ["выход", "стоп", "закрыть"]):
-            self._cmd_exit()
-        elif any(w in text_lower for w in ["покажи", "список", "что на"]):
+        cmd = self.parser.get_command_type(text)
+
+        if cmd == "exit":
+            raise SystemExit(0)
+        elif cmd == "sleep":
+            return
+        elif cmd == "show":
             self._cmd_show_tasks(text)
-        elif any(w in text_lower for w in ["помощь", "команды"]):
+        elif cmd == "help":
             self._cmd_help()
-        elif "статус" in text_lower:
-            self._cmd_status()
-        elif any(w in text for w in ["очисти", "удали все", "очистить"]):
+        elif cmd == "clear":
             self._cmd_clear_tasks()
         else:
             self._cmd_add_task(text)
@@ -74,19 +91,19 @@ class VoiceCalendarApp:
             self.synthesizer.speak("Не удалось распознать задачу")
 
     def _cmd_show_tasks(self, text):
-        query_date = self.parser.parse_query_date(text)
+        query_date = self.parser._extract_date(text)
         if query_date:
             tasks = self.storage.get_tasks_for_date(query_date)
-            label = f"Задачи на {query_date.strftime('%d.%m.%Y')}"
+            label = f" 📅 Задачи на {query_date.strftime('%d.%m.%Y')}"
         elif "сегодня" in text:
             tasks = self.storage.get_tasks_for_date(datetime.now())
-            label = "Задачи на сегодня"
+            label = " 📅 Задачи на сегодня"
         elif "завтра" in text:
             tasks = self.storage.get_tasks_for_date(datetime.now() + timedelta(days=1))
-            label = "Задачи на завтра"
+            label = " 📅 Задачи на завтра"
         else:
             tasks = self.storage.get_upcoming_tasks(days=7)
-            label = "Задачи на неделю"
+            label = " 📅 Задачи на неделю"
         if not tasks:
             self.synthesizer.speak("Задач не найдено")
             return
@@ -97,20 +114,12 @@ class VoiceCalendarApp:
 
     def _cmd_help(self):
         print(self.HELP_TEXT)
-        print("Смотрите список задач на экране")
+        print("Смотрите список команд на экране")
 
     def _cmd_clear_tasks(self) -> None:
         """Очищает все задачи."""
         self.storage.clear_all()
-        self.synthesizer.speak("Все задачи удалены.")
-
-    def _cmd_status(self):
-        count = self.storage.get_task_count()
-        self.synthesizer.speak(f"В хранилище {count} задач")
-
-    def _cmd_exit(self):
-        self.synthesizer.speak("До свидания!")
-        self.stop()
+        self.synthesizer.speak("Все задачи удалены")
 
 
 if __name__ == "__main__":

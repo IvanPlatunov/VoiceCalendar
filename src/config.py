@@ -32,6 +32,16 @@ class Config:
     speech_volume: float = field(
         default_factory=lambda: float(os.getenv("VC_SPEECH_VOLUME", "0.9"))
     )
+    chunk_duration: float = field(
+        default_factory=lambda: float(os.getenv("VC_CHUNK_DURATION", "0.3"))
+    )
+    silence_threshold: int = field(
+        default_factory=lambda: int(os.getenv("VC_SILENCE_THRESHOLD", "100"))
+    )
+    silence_limit: float = field(
+        default_factory=lambda: float(os.getenv("VC_SILENCE_LIMIT", "1.5"))
+    )
+
     google_credentials_path: Optional[str] = field(
         default_factory=lambda: os.getenv("VC_GOOGLE_CREDENTIALS", None)
     )
@@ -41,7 +51,6 @@ class Config:
     google_calendar_id: str = field(
         default_factory=lambda: os.getenv("VC_GOOGLE_CALENDAR_ID", "primary")
     )
-    default_task_time: tuple = (9, 0)
     default_task_duration: int = field(
         default_factory=lambda: int(os.getenv("VC_DEFAULT_DURATION", "60"))
     )

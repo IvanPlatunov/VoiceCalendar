@@ -1,12 +1,11 @@
 import sys
 import argparse
-import logging
+from dotenv import load_dotenv
 
+load_dotenv()
 from src.config import Config
 from src.app import VoiceCalendarApp
 from src.exceptions import VoiceCalendarError, ConfigurationError
-
-logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -76,10 +75,6 @@ def main():
     try:
         args = parse_args()
         config = create_config(args)
-        print("=" * 60)
-        print(" VoiceCalendar")
-        print(" Голосовой помощник для управления задачами")
-        print("=" * 60)
         if config.debug:
             print("Режим отладки включен")
         app = VoiceCalendarApp(config=config)

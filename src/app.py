@@ -1,17 +1,19 @@
 import sys
 import time
+import os
 from datetime import datetime, timedelta
 from typing import Optional
-
 from .config import Config
 from .storage.json_storage import JsonCalendarStorage
+from .storage.google_calendar_storage import GoogleCalendarStorage
 from .parser.command_parser import CommandParser
 from .speech.recognizer import VoiceRecognizer, RecognizerEvent
 from .speech.synthesizer import SpeechSynthesizer
 
 
 class VoiceCalendarApp:
-    HELP_TEXT = """
+    # Базовая справка (без блока синхронизации)
+    BASE_HELP_TEXT = """
 ╔══════════════════════════════════════════════════════════════════╗
 ║                   🗓️  VOICE CALENDAR — СПРАВКА                   ║
 ╠══════════════════════════════════════════════════════════════════╣
@@ -33,10 +35,31 @@ class VoiceCalendarApp:
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
+    # Дополнительный блок для режима Google Calendar
+    GOOGLE_SYNC_HELP = """
+╠══════════════════════════════════════════════════════════════════╣
+║  🔄 СИНХРОНИЗАЦИЯ (Google Calendar)                              ║
+║    • "Синхронизировать" — объединить JSON и Google Calendar      ║
+║    • "Экспорт в json" — сохранить задачи в файл                  ║
+║    • "Импорт из json" — загрузить задачи из файла                ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.from_env()
         self.config.validate()
-        self.storage = JsonCalendarStorage(self.config.storage_path)
+
+        # Динамический выбор хранилища
+        if self.config.storage_type == "google":
+            self.storage = GoogleCalendarStorage(
+                credentials_path=self.config.google_credentials_path,
+                token_path=self.config.google_token_path,
+                calendar_id=self.config.google_calendar_id,
+            )
+            # Автоматическая синхронизация при запуске
+            self._auto_sync()
+        else:
+            self.storage = JsonCalendarStorage(self.config.storage_path)
 
         self.parser = CommandParser()
         self.recognizer = VoiceRecognizer(self.config)
@@ -46,14 +69,65 @@ class VoiceCalendarApp:
             language="ru",
         )
 
+    def _get_help_text(self) -> str:
+        """Возвращает справку с учётом текущего режима работы."""
+        if self.config.storage_type == "google":
+            return self.BASE_HELP_TEXT + self.GOOGLE_SYNC_HELP
+        return self.BASE_HELP_TEXT
+
+    def _get_mode_display(self) -> str:
+        """Возвращает строку с отображением текущего режима."""
+        if self.config.storage_type == "google":
+            return "🌐 Режим: Google Calendar"
+        return "💾 Режим: JSON (локальное хранилище)"
+
+    def _auto_sync(self):
+        """Автоматическая синхронизация при запуске в режиме Google."""
+        json_path = self.config.storage_path
+
+        if not os.path.exists(json_path):
+            print("⚠️ JSON-файл не найден, синхронизация пропущена")
+            return
+
+        try:
+            print("🔄 Выполняется синхронизация с JSON...")
+            result = self.storage.sync_with_json(json_path)
+
+            if result["merged_tasks"] > 0:
+                print(f"✅ Синхронизация завершена:")
+                print(f"   • Задач в JSON: {result['json_tasks']}")
+                print(f"   • Задач в Google: {result['google_tasks']}")
+                print(f"   • Дубликатов: {result['duplicates']}")
+                print(f"   • Итого после слияния: {result['merged_tasks']}")
+                print(f"   • Добавлено в Google: {result['added_to_google']}")
+                print(f"   • Добавлено в JSON: {result['added_to_json']}")
+
+                self.synthesizer.speak(
+                    f"Синхронизация завершена. Всего задач: {result['merged_tasks']}"
+                )
+            else:
+                print("✅ Задач не найдено")
+
+        except Exception as e:
+            print(f"️ Ошибка синхронизации: {e}")
+
     def run(self):
         print("=" * 60)
-        print("  🗓️  VoiceCalendar")
+        print("  ️  VoiceCalendar")
+        print(f"  {self._get_mode_display()}")  # ← Отображение режима
         print("Голосовой помощник для управления задачами")
         print("=" * 60)
+
         self._running = True
-        self.synthesizer.speak("Голосовой помощник готов. Чем могу помочь?")
-        print(self.HELP_TEXT)
+        self.synthesizer.speak(
+            f"Голосовой помощник готов. "
+            f"Работаю в режиме {self.config.storage_type}. "
+            f"Чем могу помочь?"
+        )
+
+        # Выводим справку с учётом режима
+        print(self._get_help_text())
+
         try:
             while True:
                 event, text = self.recognizer.listen_safe()
@@ -86,6 +160,12 @@ class VoiceCalendarApp:
             self._cmd_help()
         elif cmd == "clear":
             self._cmd_clear_tasks()
+        elif cmd == "sync" and self.config.storage_type == "google":
+            self._cmd_sync()
+        elif cmd == "export" and self.config.storage_type == "google":
+            self._cmd_export_to_json(text)
+        elif cmd == "import" and self.config.storage_type == "google":
+            self._cmd_import_from_json(text)
         else:
             self._cmd_add_task(text)
 
@@ -122,13 +202,66 @@ class VoiceCalendarApp:
 
     def _cmd_help(self):
         print("Смотрите список команд на экране")
-        print(self.HELP_TEXT)
-        self.synthesizer.speak("Смотрите список команд на экране.")
+        # Показываем актуальную справку с режимом
+        print(f"\n{self._get_mode_display()}\n")
+        print(self._get_help_text())
+        self.synthesizer.speak(
+            f"Смотрите список команд на экране. "
+            f"Текущий режим: {self.config.storage_type}."
+        )
 
     def _cmd_clear_tasks(self) -> None:
         """Очищает все задачи."""
         self.storage.clear_all()
         self.synthesizer.speak("Все задачи удалены")
+
+    def _cmd_sync(self) -> None:
+        """Ручная синхронизация JSON и Google Calendar."""
+        json_path = self.config.storage_path
+
+        try:
+            print("🔄 Выполняется синхронизация...")
+            result = self.storage.sync_with_json(json_path)
+
+            message = (
+                f"Синхронизация завершена. "
+                f"Всего задач: {result['merged_tasks']}. "
+                f"Добавлено в Google: {result['added_to_google']}. "
+                f"Добавлено в JSON: {result['added_to_json']}"
+            )
+            self.synthesizer.speak(message)
+            print(f"✅ {message}")
+
+        except Exception as e:
+            self.synthesizer.speak(f"Ошибка синхронизации: {e}")
+            print(f" Ошибка синхронизации: {e}")
+
+    def _cmd_export_to_json(self, text) -> None:
+        """Экспортирует задачи в JSON."""
+        json_path = self.config.storage_path
+
+        try:
+            tasks = self.storage.get_all_tasks()
+            self.storage.save_json_tasks(json_path, tasks)
+            message = f"Экспортировано {len(tasks)} задач в {json_path}"
+            self.synthesizer.speak(message)
+            print(f"✅ {message}")
+        except Exception as e:
+            self.synthesizer.speak(f"Ошибка экспорта: {e}")
+            print(f"❌ Ошибка экспорта: {e}")
+
+    def _cmd_import_from_json(self, text) -> None:
+        """Импортирует задачи из JSON."""
+        json_path = self.config.storage_path
+
+        try:
+            imported = self.storage.import_from_json(json_path)
+            message = f"Импортировано {imported} задач из {json_path}"
+            self.synthesizer.speak(message)
+            print(f"✅ {message}")
+        except Exception as e:
+            self.synthesizer.speak(f"Ошибка импорта: {e}")
+            print(f"❌ Ошибка импорта: {e}")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,16 @@ class CommandParser:
     HELP_WORDS = ["помощь", "команды", "что умеешь", "справка"]
     CLEAR_WORDS = ["очисти", "удали все", "стереть"]
 
+    SYNC_WORDS = ["синхронизир", "обнови данные", "sync", "синхронизация", "обновить"]
+    EXPORT_WORDS = ["экспорт", "сохрани в json", "выгрузи", "экспортируй", "выгрузить"]
+    IMPORT_WORDS = [
+        "импорт",
+        "загрузи из json",
+        "импортируй",
+        "загрузить",
+        "загрузи из файла",
+    ]
+
     TRIGGER_WORDS = [
         "поставь",
         "запиши",
@@ -132,6 +142,13 @@ class CommandParser:
             return "help"
         if any(w in t for w in self.CLEAR_WORDS):
             return "clear"
+        # НОВЫЕ КОМАНДЫ
+        if any(w in t for w in self.SYNC_WORDS):
+            return "sync"
+        if any(w in t for w in self.EXPORT_WORDS):
+            return "export"
+        if any(w in t for w in self.IMPORT_WORDS):
+            return "import"
         return "add"
 
     def _is_command(self, text: str) -> bool:
@@ -145,16 +162,21 @@ class CommandParser:
             return now + timedelta(days=1)
         if "сегодня" in text:
             return now
+
         for name, wd in self.WEEKDAYS_RU.items():
             if name in text.split():
                 return now + timedelta(days=(wd - now.weekday()) % 7 or 7)
-        m = re.search(rf"(\d{{1,2}})[\s\-]?(?:го|ого)?\s+{self._months_re}", text)
+
+        m = re.search(rf"(\d{{1,2}})[\s\-]?(?:го|ого)?\s+({self._months_re})", text)
         if m:
-            d, mo = int(m.group(1)), self.MONTHS_RU[m.group(2)]
             try:
-                return datetime(now.year if mo >= now.month else now.year + 1, mo, d)
-            except ValueError:
-                pass
+                day = int(m.group(1))
+                month = self.MONTHS_RU[m.group(2)]
+                year = now.year if month >= now.month else now.year + 1
+                return datetime(year, month, day)
+            except (ValueError, KeyError):
+                return None
+
         return None
 
     def _extract_time(self, text: str) -> Tuple[int, int]:

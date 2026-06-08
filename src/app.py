@@ -48,6 +48,13 @@ class VoiceCalendarApp:
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.from_env()
         self.config.validate()
+        self.parser = CommandParser()
+        self.recognizer = VoiceRecognizer(self.config)
+        self.synthesizer = SpeechSynthesizer(
+            rate=self.config.speech_rate,
+            volume=self.config.speech_volume,
+            language="ru",
+        )
 
         # Динамический выбор хранилища
         if self.config.storage_type == "google":
@@ -60,14 +67,6 @@ class VoiceCalendarApp:
             self._auto_sync()
         else:
             self.storage = JsonCalendarStorage(self.config.storage_path)
-
-        self.parser = CommandParser()
-        self.recognizer = VoiceRecognizer(self.config)
-        self.synthesizer = SpeechSynthesizer(
-            rate=self.config.speech_rate,
-            volume=self.config.speech_volume,
-            language="ru",
-        )
 
     def _get_help_text(self) -> str:
         """Возвращает справку с учётом текущего режима работы."""

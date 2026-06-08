@@ -12,9 +12,9 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from src.models.task import Task
-from src.storage.base import BaseCalendarStorage
-from src.exceptions import StorageError, ConfigurationError
+from ..models.task import Task
+from .base import BaseCalendarStorage
+from ..exceptions import StorageError, ConfigurationError
 
 # Цвета Google Calendar для приоритетов
 PRIORITY_COLORS = {
